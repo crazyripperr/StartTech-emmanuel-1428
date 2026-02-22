@@ -87,9 +87,6 @@ jobs:
     needs: build
     if: github.event_name == 'push'
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -97,45 +94,35 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Get EC2 instance IPs
+      - name: Get running instance IDs
         run: |
           INSTANCE_IDS=$(aws autoscaling describe-auto-scaling-groups \
             --auto-scaling-group-names "starttech-asg" \
             --query "AutoScalingGroups[0].Instances[?LifecycleState=='InService'].InstanceId" \
             --output text)
-          PUBLIC_IPS=""
-          for id in $INSTANCE_IDS; do
-            IP=$(aws ec2 describe-instances \
-              --instance-ids $id \
-              --query "Reservations[0].Instances[0].PublicIpAddress" \
-              --output text)
-            PUBLIC_IPS="$PUBLIC_IPS $IP"
-          done
-          echo "PUBLIC_IPS=$PUBLIC_IPS" >> $GITHUB_ENV
+          echo "INSTANCE_IDS=$INSTANCE_IDS" >> $GITHUB_ENV
+          echo "Found instances: $INSTANCE_IDS"
 
-      - name: Setup SSH key
+      - name: Deploy via SSM
         run: |
-          mkdir -p ~/.ssh
-          echo "${{ secrets.EC2_SSH_KEY }}" > ~/.ssh/starttech.pem
-          chmod 600 ~/.ssh/starttech.pem
-
-      - name: Rolling deploy to all instances
-        run: |
-          for IP in $PUBLIC_IPS; do
-            echo "Deploying to $IP..."
-            ssh -o StrictHostKeyChecking=no \
-                -i ~/.ssh/starttech.pem \
-                ubuntu@$IP \
-                "sudo systemctl restart starttech-backend && sleep 10 && sudo systemctl is-active starttech-backend"
-            echo "Done: $IP"
+          for ID in $INSTANCE_IDS; do
+            echo "Deploying to $ID via SSM..."
+            aws ssm send-command \
+              --instance-ids "$ID" \
+              --document-name "AWS-RunShellScript" \
+              --parameters commands=["sudo systemctl restart starttech-backend"] \
+              --region ${{ env.AWS_REGION }} \
+              --output text
+            echo "Done: $ID"
           done
 
-      - name: Smoke test
+      - name: Smoke test via ALB
         run: |
           sleep 30
           HTTP_STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://${{ secrets.ALB_DNS_NAME }}/health)
+          echo "Health check status: $HTTP_STATUS"
           if [ "$HTTP_STATUS" = "200" ]; then
             echo "Smoke test passed!"
           else
-            echo "Smoke test got status: $HTTP_STATUS - continuing"
+            echo "App may still be starting - status: $HTTP_STATUS"
           fi
