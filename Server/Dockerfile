@@ -4,13 +4,19 @@ WORKDIR /app
 COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/...
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/api/...
 
 FROM alpine:3.19
 RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /root/
+
 COPY --from=builder /app/main .
+
+# Entrypoint script that writes .env file from environment variables
+COPY --from=builder /app/entrypoint.sh .
+RUN chmod +x entrypoint.sh
+
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
   CMD wget -qO- http://localhost:8080/health || exit 1
-CMD ["./main"]
+CMD ["./entrypoint.sh"]
