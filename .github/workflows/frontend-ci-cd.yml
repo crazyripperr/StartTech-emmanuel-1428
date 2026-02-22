@@ -1,4 +1,4 @@
-name: 🌐 Frontend CI/CD
+name: Frontend CI/CD
 
 on:
   push:
@@ -16,40 +16,40 @@ env:
 
 jobs:
   build:
-    name: 🔨 Build & Test
+    name: Build and Test
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: Client
     steps:
-      - name: 📥 Checkout code
+      - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: ⚙️ Setup Node.js ${{ env.NODE_VERSION }}
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
           cache-dependency-path: Client/package-lock.json
 
-      - name: 📦 Install dependencies
+      - name: Install dependencies
         run: npm ci
 
-      - name: 🔍 Security audit
+      - name: Security audit
         run: npm audit --audit-level=high
         continue-on-error: true
 
-      - name: 🧪 Run tests
+      - name: Run tests
         run: npm test -- --watchAll=false --passWithNoTests
         env:
           CI: true
 
-      - name: 🏗️ Build production bundle
+      - name: Build production bundle
         run: npm run build
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }}
 
-      - name: 💾 Upload build artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: frontend-build
@@ -57,40 +57,32 @@ jobs:
           retention-days: 1
 
   deploy:
-    name: 🚀 Deploy to S3 + CloudFront
+    name: Deploy to S3 and CloudFront
     runs-on: ubuntu-latest
     needs: build
-    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/full-stack') && github.event_name == 'push'
+    if: github.event_name == 'push'
     steps:
-      - name: 📥 Download build artifact
+      - name: Download build artifact
         uses: actions/download-artifact@v4
         with:
           name: frontend-build
           path: dist
 
-      - name: 🔐 Configure AWS credentials
+      - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: ☁️ Sync files to S3
+      - name: Sync files to S3
         run: |
-          aws s3 sync dist/ s3://${{ secrets.S3_BUCKET_NAME }} \
-            --delete \
-            --cache-control "public,max-age=31536000" \
-            --exclude "index.html"
-          aws s3 cp dist/index.html s3://${{ secrets.S3_BUCKET_NAME }}/index.html \
-            --cache-control "no-cache,no-store,must-revalidate"
+          aws s3 sync dist/ s3://${{ secrets.S3_BUCKET_NAME }} --delete --cache-control "public,max-age=31536000" --exclude "index.html"
+          aws s3 cp dist/index.html s3://${{ secrets.S3_BUCKET_NAME }}/index.html --cache-control "no-cache,no-store,must-revalidate"
 
-      - name: 🔄 Invalidate CloudFront cache
+      - name: Invalidate CloudFront cache
         run: |
-          aws cloudfront create-invalidation \
-            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
-            --paths "/*"
+          aws cloudfront create-invalidation --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} --paths "/*"
 
-      - name: ✅ Deployment complete
-        run: |
-          echo "✅ Frontend deployed successfully!"
-          echo "🌍 Available at: https://${{ secrets.CLOUDFRONT_DOMAIN }}"
+      - name: Deployment complete
+        run: echo "Frontend deployed successfully to https://${{ secrets.CLOUDFRONT_DOMAIN }}"
