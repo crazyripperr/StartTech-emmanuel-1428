@@ -2,11 +2,11 @@ name: 🔧 Backend CI/CD
 
 on:
   push:
-    branches: [main]
+    branches: [main, feature/full-stack]
     paths:
       - 'Server/**'
   pull_request:
-    branches: [main]
+    branches: [main, feature/full-stack]
     paths:
       - 'Server/**'
 
@@ -52,7 +52,7 @@ jobs:
     name: 🐳 Build & Push Docker Image
     runs-on: ubuntu-latest
     needs: test
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/full-stack') && github.event_name == 'push'
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -92,7 +92,7 @@ jobs:
     name: 🚀 Deploy to EC2 (Rolling Update)
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/full-stack') && github.event_name == 'push'
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -142,12 +142,10 @@ jobs:
       - name: 🏥 Smoke test
         run: |
           sleep 30
-          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-            http://${{ secrets.ALB_DNS_NAME }}/health)
-          if [ "$STATUS" = "200" ]; then
+          HTTP_STATUS=$(curl -s -o /dev/null -w '%{http_code}' http://${{ secrets.ALB_DNS_NAME }}/health)
+          if [ "$HTTP_STATUS" = "200" ]; then
             echo "✅ Smoke test passed!"
           else
-            echo "❌ Smoke test FAILED! Got: $STATUS"
+            echo "❌ Smoke test FAILED! Got: $HTTP_STATUS"
             exit 1
           fi
-```
