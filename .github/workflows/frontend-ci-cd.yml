@@ -1,19 +1,3 @@
-# .github/workflows/frontend-ci-cd.yml
-#
-# BEGINNER EXPLANATION:
-# This pipeline runs every time you push code that's inside the Client/ folder.
-# It does 4 things automatically:
-#   1. INSTALL dependencies (like running "npm install" on your machine)
-#   2. TEST the code (runs any tests you have)
-#   3. BUILD a production-ready version (optimised, minified files)
-#   4. UPLOAD those files to S3 and refresh CloudFront
-#
-# Required GitHub Secrets (Settings → Secrets → Actions):
-#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
-#   S3_BUCKET_NAME  (the bucket Terraform created, e.g. starttech-prod-frontend-emmanuel1428)
-#   CLOUDFRONT_DISTRIBUTION_ID  (from Terraform outputs)
-#   VITE_API_URL  (your ALB DNS name, e.g. http://starttech-alb-xxxx.us-east-1.elb.amazonaws.com)
-
 name: 🌐 Frontend CI/CD
 
 on:
