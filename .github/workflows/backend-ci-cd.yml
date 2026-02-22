@@ -12,7 +12,7 @@ on:
 
 env:
   AWS_REGION: "us-east-1"
-  GO_VERSION: "1.21"
+  GO_VERSION: "1.25"
   IMAGE_NAME: "starttech-backend"
 
 jobs:
@@ -31,6 +31,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: Server/MuchToDo/go.sum
+          go-version: "1.25"
 
       - name: Download dependencies
         run: go mod download
