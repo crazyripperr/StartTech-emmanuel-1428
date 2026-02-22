@@ -1,0 +1,117 @@
+# .github/workflows/frontend-ci-cd.yml
+#
+# BEGINNER EXPLANATION:
+# This pipeline runs every time you push code that's inside the Client/ folder.
+# It does 4 things automatically:
+#   1. INSTALL dependencies (like running "npm install" on your machine)
+#   2. TEST the code (runs any tests you have)
+#   3. BUILD a production-ready version (optimised, minified files)
+#   4. UPLOAD those files to S3 and refresh CloudFront
+#
+# Required GitHub Secrets (Settings → Secrets → Actions):
+#   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY
+#   S3_BUCKET_NAME  (the bucket Terraform created, e.g. starttech-prod-frontend-emmanuel1428)
+#   CLOUDFRONT_DISTRIBUTION_ID  (from Terraform outputs)
+#   VITE_API_URL  (your ALB DNS name, e.g. http://starttech-alb-xxxx.us-east-1.elb.amazonaws.com)
+
+name: 🌐 Frontend CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Client/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'Client/**'
+
+env:
+  AWS_REGION: "us-east-1"
+  NODE_VERSION: "20"
+
+jobs:
+  build:
+    name: 🔨 Build & Test
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: Client
+
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: ⚙️ Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: Client/package-lock.json
+
+      - name: 📦 Install dependencies
+        run: npm ci
+
+      - name: 🔍 Security audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+      - name: 🧪 Run tests
+        run: npm test -- --watchAll=false --passWithNoTests
+        env:
+          CI: true
+
+      - name: 🏗️ Build production bundle
+        run: npm run build
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
+      - name: 💾 Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: Client/dist
+          retention-days: 1
+
+  deploy:
+    name: 🚀 Deploy to S3 + CloudFront
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: 📥 Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: dist
+
+      - name: 🔐 Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: ☁️ Sync files to S3
+        run: |
+          aws s3 sync dist/ s3://${{ secrets.S3_BUCKET_NAME }} \
+            --delete \
+            --cache-control "public,max-age=31536000" \
+            --exclude "index.html"
+          aws s3 cp dist/index.html s3://${{ secrets.S3_BUCKET_NAME }}/index.html \
+            --cache-control "no-cache,no-store,must-revalidate"
+
+      - name: 🔄 Invalidate CloudFront cache
+        run: |
+          aws cloudfront create-invalidation \
+            --distribution-id ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }} \
+            --paths "/*"
+
+      - name: ✅ Deployment complete
+        run: |
+          echo "✅ Frontend deployed successfully!"
+          echo "🌍 Available at: https://${{ secrets.CLOUDFRONT_DOMAIN }}"
+```
+
